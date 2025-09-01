@@ -1,0 +1,56 @@
+name: Replace Dev URLs with PRD URLs on Carga Archivo REP4 CFE FLASK
+
+on:
+  pull_request:
+    types: [closed] # Se activa solo cuando se cierra un PR
+    branches: 
+      - main # Se activa solo en push a main
+
+jobs:
+  replace-urls:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Necesario para commits posteriores
+
+      - name: Detect manifest file (manifest.yml o mainfest.yml)
+        id: mf
+        run: |
+          if [ -f "manifest.yml" ]; then
+            echo "file=manifest.yml" >> $GITHUB_OUTPUT
+          elif [ -f "mainfest.yml" ]; then
+            echo "file=mainfest.yml" >> $GITHUB_OUTPUT
+          else
+            echo "No manifest file found" >&2
+            exit 1
+          fi
+
+      - name: Replace DEV → PRD in app.py
+        run: |
+          # Cambia solo el subdominio; conserva protocolo/host/path
+          sed -i 's/telcl-dev-db-cap/telcl-prd-db-cap/g' app.py
+
+      - name: Replace DEV → PRD in manifest
+        run: |
+          MF="${{ steps.mf.outputs.file }}"
+
+          # Nombre de la app
+          sed -i 's/carga-archivo-REP4-clean-DEV/carga-archivo-REP4-clean-PRD/g' "$MF"
+
+          # ENVIRONMENT
+          sed -i 's/ENVIRONMENT:[[:space:]]*dev/ENVIRONMENT: prd/g' "$MF"
+
+          # Dominios en URLs
+          sed -i 's/telcl-dev-db-cap/telcl-prd-db-cap/g' "$MF"
+
+          # (Buildpack se mantiene igual a la URL v1.8.4 como indicaste para PRD)
+      
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add .
+          git diff --quiet && git diff --staged --quiet || git commit -m "[Automated] Replaced DEV URLs with PRD URLs"
+          git push
