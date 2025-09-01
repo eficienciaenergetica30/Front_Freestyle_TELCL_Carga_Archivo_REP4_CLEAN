@@ -1,0 +1,71 @@
+/* Estilos personalizados para la aplicación */
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    border: 1px solid rgba(0, 0, 0, 0.125);
+}
+
+.table th {
+    font-weight: 600;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.table td {
+    font-size: 0.8rem;
+}
+
+.table-responsive {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+#deleteAllBtn {
+    transition: all 0.3s ease;
+}
+
+#deleteAllBtn:hover {
+    transform: scale(1.05);
+}
+
+.alert {
+    border: none;
+    border-left: 4px solid;
+}
+
+.alert-danger {
+    border-left-color: #dc3545;
+}
+
+.alert-success {
+    border-left-color: #198754;
+}
+
+.alert-info {
+    border-left-color: #0dcaf0;
+}
+
+.alert-warning {
+    border-left-color: #ffc107;
+}
+
+/* Estilo para el datepicker de solo mes/año */
+.datepicker {
+    z-index: 1001 !important;
+}
+
+.datepicker-dropdown {
+    padding: 10px;
+}
+
+.datepicker table {
+    width: 100%;
+}
+
+.datepicker table tr td, .datepicker table tr th {
+    text-align: center;
+}
+
+/* Mejora visual para las tablas */
+.table-sm th, .table-sm td {
+    padding: 0.3rem;
+}

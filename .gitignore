@@ -1,0 +1,47 @@
+# Entornos virtuales
+venv/
+env/
+.venv/
+
+# Archivos de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+
+# Archivos de entorno
+.env
+.env.local
+.env.production
+
+# Archivos de desarrollo
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
+logs/
+
+# Archivos temporales
+*.tmp
+*.temp
+
+# Uploads (si no quieres subir archivos subidos)
+uploads/
+*.xlsx
+*.xls
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# SAP BTP
+.mta/
+.mtaarch*
+
+# Github
+.github/
