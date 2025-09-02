@@ -762,5 +762,3 @@ if __name__ == "__main__":
 # This is a comment only for merge purpose too
 
 # Only for merge
-# Only for merge
-# Only for merge
