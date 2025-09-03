@@ -490,6 +490,12 @@ def index():
         # Validar extensión del archivo
         if file and allowed_file(file.filename):
             try:
+                print("=== Iniciando borrar_datos ===")
+                result = delete_all_data()
+                print(f"Resultado: {result}")
+                # return jsonify(result)
+                print(jsonify(result))
+
                 # Guardar el archivo
                 filename = secure_filename(file.filename)
                 filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
