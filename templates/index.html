@@ -233,7 +233,15 @@
                                 "Content-Type": "application/json",
                             },
                         })
-                            .then((response) => response.json())
+                            .then(async (response) => {
+                                try {
+                                    return await response.json();
+                                } catch (parseErr) {
+                                    const text = await response.text();
+                                    const cleaned = text.replace(/^\uFEFF/, "").replace(/^\s*\)\]\}',?\s*/, "");
+                                    return JSON.parse(cleaned);
+                                }
+                            })
                             .then((data) => {
                                 if (data.success) {
                                     Swal.fire("¡Eliminado!", data.message, "success");
@@ -295,7 +303,14 @@
                         },
                     });
 
-                    const result = await response.json();
+                    let result;
+                    try {
+                        result = await response.json();
+                    } catch (parseErr) {
+                        const text = await response.text();
+                        const cleaned = text.replace(/^\uFEFF/, "").replace(/^\s*\)\]\}',?\s*/, "");
+                        result = JSON.parse(cleaned);
+                    }
 
                     Swal.close(); // Cerrar loader
 
@@ -363,7 +378,19 @@
                     body: JSON.stringify({ hojas: hojasData })
                 });
 
-                const result = await response.json();
+                let result;
+                try {
+                    result = await response.json();
+                } catch (parseErr) {
+                    const text = await response.text();
+                    const cleaned = text.replace(/^\uFEFF/, "").replace(/^\s*\)\]\}',?\s*/, "");
+                    try {
+                        result = JSON.parse(cleaned);
+                    } catch (e) {
+                        console.error("Respuesta no-JSON:", text.slice(0, 200));
+                        throw new Error("Respuesta inválida del servidor");
+                    }
+                }
                 socket.off('progress_update'); // Dejar de escuchar actualizaciones
                 Swal.close();
 
