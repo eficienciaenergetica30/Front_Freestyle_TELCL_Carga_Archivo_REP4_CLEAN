@@ -1,4 +1,5 @@
 import os
+import json
 from hdbcli import dbapi
 
 
@@ -23,6 +24,31 @@ def load_env_from_dotenv():
 
 
 def get_hana_credentials():
+    if not (os.getenv("HANA_HOST") and os.getenv("HANA_USER") and os.getenv("HANA_PASSWORD")):
+        vcap = os.getenv("VCAP_SERVICES")
+        if vcap:
+            try:
+                data = json.loads(vcap)
+                creds = None
+                for _, services in data.items():
+                    for s in services:
+                        c = s.get("credentials", {})
+                        if c.get("host") and (c.get("user") or c.get("username")) and c.get("password"):
+                            creds = c
+                            break
+                    if creds:
+                        break
+                if creds:
+                    os.environ.setdefault("HANA_HOST", str(creds.get("host")))
+                    port_val = creds.get("port") or creds.get("port_tls")
+                    if port_val is not None:
+                        os.environ.setdefault("HANA_PORT", str(port_val))
+                    os.environ.setdefault("HANA_USER", str(creds.get("user") or creds.get("username")))
+                    os.environ.setdefault("HANA_PASSWORD", str(creds.get("password")))
+                    if creds.get("schema"):
+                        os.environ.setdefault("HANA_SCHEMA", str(creds.get("schema")))
+            except Exception:
+                pass
     return {
         "host": os.getenv("HANA_HOST"),
         "port": int(os.getenv("HANA_PORT")) if os.getenv("HANA_PORT") else None,
@@ -143,7 +169,7 @@ def insert_temp_rep4cfe(conn, entities):
                     inserted += 1
                 except Exception as ie:
                     failed += 1
-                    rpu_idx = cols.index("Rpu") if "Rpu" in cols else None
+                    rpu_idx = cols.index("RPU") if "RPU" in cols else None
                     rpu_val = p[rpu_idx] if rpu_idx is not None else None
                     msg = str(ie)
                     errors.append({"index": idx, "rpu": rpu_val, "message": msg})
