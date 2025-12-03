@@ -343,7 +343,6 @@ async def enviar_registro_async(
     url = "https://telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com/dataservices/TempRep4CFE"
     headers = {
         "Content-Type": "application/json",
-        "Host": "telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com",
     }
     try:
         resp = await client.post(
@@ -367,7 +366,7 @@ async def enviar_registro_async(
         )
 
         print(f"[{resp.status_code}] -> {resp.text[:300]}...")
-        return resp.status_code < 400
+        return 200 <= resp.status_code < 300
     except Exception as e:
         print(f"Error con {url}: {e}")
         return False
@@ -388,7 +387,7 @@ async def procesar_hoja_async(hoja, session_id):
     trust_env = True if "VCAP_APPLICATION" in os.environ else False
     async with httpx.AsyncClient(
         limits=limits,
-        verify=False,
+        verify=True,
         timeout=httpx.Timeout(30.0, connect=10.0),
         trust_env=trust_env,
         http2=False,
