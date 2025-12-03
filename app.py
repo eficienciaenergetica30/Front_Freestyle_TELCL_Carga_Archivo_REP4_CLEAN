@@ -340,7 +340,7 @@ async def enviar_registro_async(
 ):
     entity = mapear_registro(fila)
 
-    url = "https://telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com/dataservices/TempRep4CFE"
+    url = "https://telcl-prd-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com/dataservices/TempRep4CFE"
 
     headers = {
         "Content-Type": "application/json",
@@ -556,7 +556,7 @@ def delete_all_data(auth_token=None):
     Función robusta con fallback a IP directa
     """
 
-    url = "https://telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com/dataservices/truncateTempRep4CFE"
+    url = "https://telcl-prd-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com/dataservices/truncateTempRep4CFE"
 
 
     headers = {
