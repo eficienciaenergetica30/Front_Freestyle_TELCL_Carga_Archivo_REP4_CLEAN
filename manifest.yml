@@ -1,5 +1,5 @@
 applications:
-  - name: carga-archivo-REP4-clean-PRD
+  - name: carga-archivo-REP4-clean-DEV
     memory: 1G
     buildpack: https://github.com/cloudfoundry/python-buildpack.git#v1.8.4
     command: gunicorn --worker-class eventlet -w 1 app:app --bind 0.0.0.0:$PORT --timeout 120
@@ -7,11 +7,8 @@ applications:
     health-check-http-endpoint: /health
     env:
       FLASK_ENV: production
-      ENVIRONMENT: prd
-      DELETE_URL: https://telcl-prd-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com/dataservices/truncateTempRep4CFE
-      TEMP_REP4_URL: https://telcl-prd-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com/dataservices/TempRep4CFE
+      ENVIRONMENT: dev
       PYTHONUNBUFFERED: "true"
       HTTP_TIMEOUT: "90"
-      DNS_CACHE_TTL: "0"
 
 

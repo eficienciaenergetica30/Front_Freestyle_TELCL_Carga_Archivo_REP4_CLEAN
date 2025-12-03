@@ -1,0 +1,3 @@
+POST https://telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com/dataservices/truncateTempRep4CFE HTTP/1.1
+content-type: application/json
+
