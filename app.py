@@ -27,7 +27,7 @@ def configure_dns_for_sap_btp():
                 return original_getaddrinfo(host, port, family, type, proto, flags)
             except socket.gaierror as e:
                 print(f"DNS resolution failed for {host}, trying IP fallback...")
-                if host == "telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com":
+                if host == "telcl-prd-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com":
                     return [
                         (
                             socket.AF_INET,
@@ -341,9 +341,10 @@ async def enviar_registro_async(
     entity = mapear_registro(fila)
 
     url = "https://telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com/dataservices/TempRep4CFE"
+
     headers = {
         "Content-Type": "application/json",
-        "Host": "telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com",
+        "Host": "telcl-prd-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com",
     }
     try:
         resp = await client.post(
@@ -527,7 +528,7 @@ def configure_dns_for_sap_btp():
                 )
 
                 # Fallback: intentar con IP directa si conocemos el hostname
-                if host == "telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com":
+                if host == "telcl-prd-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com":
                     # Usar la IP que obtuvimos del SSH
                     print("Using direct IP resolution...")
                     return [
@@ -554,12 +555,14 @@ def delete_all_data(auth_token=None):
     """
     Función robusta con fallback a IP directa
     """
+
     url = "https://telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com/dataservices/truncateTempRep4CFE"
+
 
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
-        "Host": "telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com",
+        "Host": "telcl-prd-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com",
         "User-Agent": "Flask-App/1.0",
     }
 
@@ -650,7 +653,7 @@ def test_connection():
     # Test con hostname
     try:
         resp = requests.get(
-            "https://telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com",
+            "https://telcl-prd-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com",
             timeout=10,
         )
         results["hostname_test"] = {"success": True, "status": resp.status_code}
@@ -662,7 +665,7 @@ def test_connection():
         resp = requests.get(
             "https://52.23.1.211",
             headers={
-                "Host": "telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com"
+                "Host": "telcl-prd-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com"
             },
             timeout=10,
             verify=False,
@@ -683,7 +686,7 @@ def test_connection():
 
 @app.route("/debug-connectivity")
 def debug_connectivity():
-    hostname = "telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com"
+    hostname = "telcl-prd-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com"
     results = {}
 
     # Test DNS
