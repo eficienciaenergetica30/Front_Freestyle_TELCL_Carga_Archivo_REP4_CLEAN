@@ -60,7 +60,6 @@ MAX_CONCURRENCY = 500
 
 BASE_URL = os.getenv("TLCL-SERVICES_BASE_URL", os.getenv("TLCL_SERVICES_BASE_URL"))
 HTTP_TIMEOUT = float(os.getenv("HTTP_TIMEOUT", "30"))
-AUTH_TOKEN = os.getenv("AUTH_TOKEN")
 SERVICE_TEMP_URL = (
     BASE_URL.rstrip("/") + "/dataservices/TempRep4CFE"
 ) if BASE_URL else "https://telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com/dataservices/TempRep4CFE"
@@ -353,8 +352,6 @@ async def enviar_registro_async(
     headers = {
         "Content-Type": "application/json",
     }
-    if AUTH_TOKEN:
-        headers["Authorization"] = f"Bearer {AUTH_TOKEN}"
     try:
         resp = await client.post(
             url,
@@ -521,7 +518,7 @@ def index():
 
 
 # SOLUCIÓN 2: Función delete_all_data con fallback a IP directa
-def delete_all_data(auth_token=None):
+def delete_all_data():
     """
     Función robusta con fallback a IP directa
     """
@@ -533,9 +530,6 @@ def delete_all_data(auth_token=None):
         "User-Agent": "Flask-App/1.0",
     }
 
-    token = auth_token or AUTH_TOKEN
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
 
     # Crear sesión robusta
     session = requests.Session()
