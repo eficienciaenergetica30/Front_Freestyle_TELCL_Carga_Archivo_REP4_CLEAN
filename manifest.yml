@@ -8,10 +8,8 @@ applications:
     env:
       FLASK_ENV: production
       ENVIRONMENT: dev
-      DELETE_URL: https://telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com/dataservices/truncateTempRep4CFE
-      TEMP_REP4_URL: https://telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com/dataservices/TempRep4CFE
+      TLCL-SERVICES_BASE_URL: https://telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com
       PYTHONUNBUFFERED: "true"
       HTTP_TIMEOUT: "90"
-      DNS_CACHE_TTL: "0"
 
 

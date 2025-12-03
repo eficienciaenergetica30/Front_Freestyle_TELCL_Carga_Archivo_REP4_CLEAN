@@ -58,6 +58,15 @@ ALLOWED_EXTENSIONS = {"xlsx", "xls"}
 BATCH_SIZE = 50
 MAX_CONCURRENCY = 500
 
+BASE_URL = os.getenv("TLCL-SERVICES_BASE_URL", os.getenv("TLCL_SERVICES_BASE_URL"))
+HTTP_TIMEOUT = float(os.getenv("HTTP_TIMEOUT", "30"))
+AUTH_TOKEN = os.getenv("AUTH_TOKEN")
+SERVICE_TEMP_URL = (
+    BASE_URL.rstrip("/") + "/dataservices/TempRep4CFE"
+) if BASE_URL else "https://telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com/dataservices/TempRep4CFE"
+SERVICE_DELETE_URL = (
+    BASE_URL.rstrip("/") + "/dataservices/truncateTempRep4CFE"
+) if BASE_URL else "https://telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com/dataservices/truncateTempRep4CFE"
 if not os.path.exists(app.config["UPLOAD_FOLDER"]):
     os.makedirs(app.config["UPLOAD_FOLDER"])
 
@@ -340,15 +349,17 @@ async def enviar_registro_async(
 ):
     entity = mapear_registro(fila)
 
-    url = "https://telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com/dataservices/TempRep4CFE"
+    url = SERVICE_TEMP_URL
     headers = {
         "Content-Type": "application/json",
     }
+    if AUTH_TOKEN:
+        headers["Authorization"] = f"Bearer {AUTH_TOKEN}"
     try:
         resp = await client.post(
             url,
             json=entity,
-            timeout=httpx.Timeout(45.0, connect=30.0),
+            timeout=httpx.Timeout(HTTP_TIMEOUT, connect=10.0),
             headers=headers,
         )
 
@@ -506,46 +517,7 @@ def index():
     return render_template("index.html")
 
 
-# Configurar DNS alternativo para SAP BTP
-def configure_dns_for_sap_btp():
-    """Configurar DNS resolver para SAP BTP"""
-    if "VCAP_APPLICATION" in os.environ:
-        print("Configurando DNS para SAP BTP...")
-
-        # Intentar usar DNS público como fallback
-        import socket
-
-        original_getaddrinfo = socket.getaddrinfo
-
-        def patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
-            try:
-                return original_getaddrinfo(host, port, family, type, proto, flags)
-            except socket.gaierror as e:
-                print(
-                    f"DNS resolution failed for {host}, trying alternative methods..."
-                )
-
-                # Fallback: intentar con IP directa si conocemos el hostname
-                if host == "telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com":
-                    # Usar la IP que obtuvimos del SSH
-                    print("Using direct IP resolution...")
-                    return [
-                        (
-                            socket.AF_INET,
-                            socket.SOCK_STREAM,
-                            6,
-                            "",
-                            ("52.23.1.211", port),
-                        )
-                    ]
-
-                raise e
-
-        socket.getaddrinfo = patched_getaddrinfo
-
-
-# Llamar esta función al inicio de tu app
-configure_dns_for_sap_btp()
+ 
 
 
 # SOLUCIÓN 2: Función delete_all_data con fallback a IP directa
@@ -553,17 +525,17 @@ def delete_all_data(auth_token=None):
     """
     Función robusta con fallback a IP directa
     """
-    url = "https://telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com/dataservices/truncateTempRep4CFE"
+    url = SERVICE_DELETE_URL
 
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
-        "Host": "telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com",
         "User-Agent": "Flask-App/1.0",
     }
 
-    if auth_token:
-        headers["Authorization"] = f"Bearer {auth_token}"
+    token = auth_token or AUTH_TOKEN
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
 
     # Crear sesión robusta
     session = requests.Session()
@@ -648,10 +620,8 @@ def test_connection():
 
     # Test con hostname
     try:
-        resp = requests.get(
-            "https://telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com",
-            timeout=10,
-        )
+        target = BASE_URL or "https://telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com"
+        resp = requests.get(target, timeout=10)
         results["hostname_test"] = {"success": True, "status": resp.status_code}
     except Exception as e:
         results["hostname_test"] = {"success": False, "error": str(e)}
