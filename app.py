@@ -10,9 +10,15 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import httpx
 import asyncio
 import re
+from db import (
+    load_env_from_dotenv,
+    get_hana_connection,
+    insert_temp_rep4cfe,
+    upsert_temp_rep4cfe,
+    truncate_temp_rep4cfe,
+)
 import socket
 
 
@@ -44,6 +50,7 @@ def configure_dns_for_sap_btp():
 
 # Llamar configuración DNS UNA SOLA VEZ
 configure_dns_for_sap_btp()
+load_env_from_dotenv()
 
 app = Flask(__name__)
 app.secret_key = "Hitss_REP4_Flask_2025"
@@ -58,14 +65,7 @@ ALLOWED_EXTENSIONS = {"xlsx", "xls"}
 BATCH_SIZE = 50
 MAX_CONCURRENCY = 500
 
-BASE_URL = os.getenv("TLCL-SERVICES_BASE_URL", os.getenv("TLCL_SERVICES_BASE_URL"))
 HTTP_TIMEOUT = float(os.getenv("HTTP_TIMEOUT", "30"))
-SERVICE_TEMP_URL = (
-    BASE_URL.rstrip("/") + "/dataservices/TempRep4CFE"
-) if BASE_URL else "https://telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com/dataservices/TempRep4CFE"
-SERVICE_DELETE_URL = (
-    BASE_URL.rstrip("/") + "/dataservices/truncateTempRep4CFE"
-) if BASE_URL else "https://telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com/dataservices/truncateTempRep4CFE"
 if not os.path.exists(app.config["UPLOAD_FOLDER"]):
     os.makedirs(app.config["UPLOAD_FOLDER"])
 
@@ -314,112 +314,78 @@ def mapear_registro(fila):
     # print("Dato en fila[22]:", fila[22])  # imprime solo el dato de la posición 22
     # print("Dato en fila[23]:", fila[23])  # imprime solo el dato de la posición 22
     return {
-        "Division": str(fila[0]),
-        "Rpu": str(fila[1]),
-        "Name": str(fila[2]),
-        "Address": str(fila[3]),
-        "Population": str(fila[4]),
-        "Fare": str(fila[5]),
-        "FromDate": str(fila[6]),
-        "ToDate": str(fila[7]),
-        "BillDate": f"{fila[22]}-{str(fila[21]).zfill(2)}-01",
-        "Consumption": float(a_decimal(fila[8])),
-        "Demand": float(a_decimal(fila[9])),
-        "ReactivePower": float(a_decimal(fila[10])),
-        "PowerFactor": float(a_decimal(fila[11])),
-        "LoadFactor": float(a_decimal(fila[12])),
-        "Energy": float(a_decimal(fila[13])),
-        "Iva": float(a_decimal(fila[14])),
-        "Dap": float(a_decimal(fila[15])),
-        "Charges": float(a_decimal(fila[16])),
-        "Credits": float(a_decimal(fila[17])),
-        "Total": float(a_decimal(fila[18])),
-        "Validation": float(a_decimal(fila[19])),
-        "Difference": float(a_decimal(fila[20])),
-        "IvaType": fila[23] if len(fila) > 23 else "",
+        "DIVISION": str(fila[0]),
+        "RPU": str(fila[1]),
+        "NAME": str(fila[2]),
+        "ADDRESS": str(fila[3]),
+        "POPULATION": str(fila[4]),
+        "FARE": str(fila[5]),
+        "FROMDATE": str(fila[6]),
+        "TODATE": str(fila[7]),
+        "BILLDATE": f"{fila[22]}-{str(fila[21]).zfill(2)}-01",
+        "CONSUMPTION": float(a_decimal(fila[8])),
+        "DEMAND": float(a_decimal(fila[9])),
+        "REACTIVEPOWER": float(a_decimal(fila[10])),
+        "POWERFACTOR": float(a_decimal(fila[11])),
+        "LOADFACTOR": float(a_decimal(fila[12])),
+        "ENERGY": float(a_decimal(fila[13])),
+        "IVA": float(a_decimal(fila[14])),
+        "DAP": float(a_decimal(fila[15])),
+        "CHARGES": float(a_decimal(fila[16])),
+        "CREDITS": float(a_decimal(fila[17])),
+        "TOTAL": float(a_decimal(fila[18])),
+        "VALIDATION": float(a_decimal(fila[19])),
+        "DIFFERENCE": float(a_decimal(fila[20])),
+        "IVATYPE": fila[23] if len(fila) > 23 else "",
     }
 
 
-# ***************************************** API REST - SERVICE TELCL DEV *****************************************
-
-
-async def enviar_registro_async(
-    client, fila, session_id, total_registros, registros_procesados
-):
-    entity = mapear_registro(fila)
-
-    url = SERVICE_TEMP_URL
-    headers = {
-        "Content-Type": "application/json",
-    }
-    try:
-        resp = await client.post(
-            url,
-            json=entity,
-            timeout=httpx.Timeout(HTTP_TIMEOUT, connect=10.0),
-            headers=headers,
-        )
-
-        registros_procesados[0] += 1
-        progress = (registros_procesados[0] / total_registros) * 100
-
-        socketio.emit(
-            "progress_update",
-            {
-                "current": registros_procesados[0],
-                "total": total_registros,
-                "progress": round(progress, 2),
-            },
-            room=session_id,
-        )
-
-        print(f"[{resp.status_code}] -> {resp.text[:300]}...")
-        return 200 <= resp.status_code < 300
-    except Exception as e:
-        print(f"Error con {url}: {e}")
-        return False
-
-
-async def procesar_hoja_async(hoja, session_id):
+async def procesar_hoja_db_async(hoja, session_id, modo):
     registros = hoja.get("datos", [])
     hoja_nombre = hoja.get("nombre")
     total = len(registros)
     errores = 0
     exitos = 0
-
-    # Usar una lista mutable para llevar el conteo
     registros_procesados = [0]
-
-    # CORRECCIÓN: Configurar httpx.AsyncClient con SSL apropiado
-    limits = httpx.Limits(max_connections=MAX_CONCURRENCY)
-    trust_env = True if "VCAP_APPLICATION" in os.environ else False
-    async with httpx.AsyncClient(
-        limits=limits,
-        verify=True,
-        timeout=httpx.Timeout(30.0, connect=10.0),
-        trust_env=trust_env,
-        http2=False,
-    ) as client:
-
-        # Dividir en batches
+    conn = get_hana_connection()
+    try:
         for i in range(0, total, BATCH_SIZE):
             batch = registros[i : i + BATCH_SIZE]
-            tasks = [
-                enviar_registro_async(
-                    client, r, session_id, total, registros_procesados
+            entities = [mapear_registro(r) for r in batch]
+            result = None
+            if modo == "upsert":
+                result = upsert_temp_rep4cfe(conn, entities)
+            else:
+                result = insert_temp_rep4cfe(conn, entities)
+            processed = (
+                result.get("updated", 0)
+                + result.get("inserted", 0)
+                + result.get("failed", 0)
+            )
+            registros_procesados[0] += processed
+            exitos += result.get("updated", 0) + result.get("inserted", 0)
+            errores += result.get("failed", 0)
+            if result.get("errors"):
+                print(
+                    f"Errores en lote {i//BATCH_SIZE+1}: {len(result['errors'])} primeros: "
                 )
-                for r in batch
-            ]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            for result in results:
-                if result is True:
-                    exitos += 1
-                else:
-                    errores += 1
-
-            print(f"Batch {i//BATCH_SIZE+1} terminado ({exitos+errores}/{total})")
-
+                for e in result["errors"][:5]:
+                    print(e)
+            print(
+                f"Lote {i//BATCH_SIZE+1} hoja {hoja_nombre}: ok={exitos}, errores={errores}, procesados={registros_procesados[0]}/{total}"
+            )
+            progress = (registros_procesados[0] / total) * 100 if total else 100
+            socketio.emit(
+                "progress_update",
+                {
+                    "current": registros_procesados[0],
+                    "total": total,
+                    "progress": round(progress, 2),
+                },
+                room=session_id,
+            )
+    finally:
+        conn.close()
     return {"hoja": hoja_nombre, "total": total, "exitos": exitos, "errores": errores}
 
 
@@ -434,11 +400,14 @@ def enviar_datos():
         data = request.get_json()
         hojas = data.get("hojas", [])
         session_id = request.args.get("session_id")  # Obtener session_id
+        modo = request.args.get("mode", "insert")
 
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         resultados = loop.run_until_complete(
-            asyncio.gather(*[procesar_hoja_async(h, session_id) for h in hojas])
+            asyncio.gather(
+                *[procesar_hoja_db_async(h, session_id, modo) for h in hojas]
+            )
         )
 
         return jsonify({"success": True, "resultados": resultados})
@@ -517,68 +486,14 @@ def index():
  
 
 
-# SOLUCIÓN 2: Función delete_all_data con fallback a IP directa
 def delete_all_data():
-    """
-    Función robusta con fallback a IP directa
-    """
-    url = SERVICE_DELETE_URL
-
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "User-Agent": "Flask-App/1.0",
-    }
-
-
-    # Crear sesión robusta
-    session = requests.Session()
-    session.trust_env = True
-    retry_strategy = Retry(
-        total=2, status_forcelist=[429, 500, 502, 503, 504], backoff_factor=1
-    )
-    adapter = HTTPAdapter(max_retries=retry_strategy)
-    session.mount("https://", adapter)
-
-    
-
     try:
-        response = session.post(
-            url,
-            headers=headers,
-            json={},
-            timeout=(10, 20),
-            verify=True,
-        )
-
-        print(f"Respuesta recibida: {response.status_code}")
-        response.raise_for_status()
-
-        try:
-            result = response.json()
-            return {
-                "success": True,
-                "deleted_count": result.get("deletedCount", 0),
-                "message": result.get("message", "Datos eliminados correctamente"),
-                "used_url": url,
-            }
-        except ValueError:
-            return {
-                "success": True,
-                "deleted_count": 0,
-                "message": f"Operación completada (Status: {response.status_code})",
-                "used_url": url,
-            }
-
+        conn = get_hana_connection()
+        truncate_temp_rep4cfe(conn)
+        conn.close()
+        return {"success": True, "deleted_count": 0, "message": "Tabla vaciada"}
     except Exception as e:
-        print(f"Error con {url}: {e}")
-        return {
-            "success": False,
-            "deleted_count": 0,
-            "message": f"Error: {str(e)}",
-        }
-    finally:
-        session.close()
+        return {"success": False, "deleted_count": 0, "message": str(e)}
 
 
 @app.route("/borrar_datos", methods=["POST", "GET"])
