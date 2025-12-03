@@ -340,52 +340,38 @@ async def enviar_registro_async(
 ):
     entity = mapear_registro(fila)
 
-    # URLs con fallback
-    urls_to_try = [
-        "https://telcl-prd-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com/dataservices/TempRep4CFE",
-        "https://52.23.1.211/dataservices/TempRep4CFE",
-    ]
+    url = "https://telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com/dataservices/TempRep4CFE"
 
     headers = {
         "Content-Type": "application/json",
         "Host": "telcl-prd-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com",
     }
+    try:
+        resp = await client.post(
+            url,
+            json=entity,
+            timeout=httpx.Timeout(45.0, connect=30.0),
+            headers=headers,
+        )
 
-    for i, url in enumerate(urls_to_try):
-        try:
-            print(f"Intentando envío a URL {i+1}: {url}")
+        registros_procesados[0] += 1
+        progress = (registros_procesados[0] / total_registros) * 100
 
-            resp = await client.post(
-                url,
-                json=entity,
-                timeout=httpx.Timeout(45.0, connect=30.0),
-                headers=headers,
-                # NOTA: verify se maneja al crear el cliente, no aquí
-            )
+        socketio.emit(
+            "progress_update",
+            {
+                "current": registros_procesados[0],
+                "total": total_registros,
+                "progress": round(progress, 2),
+            },
+            room=session_id,
+        )
 
-            # Actualizar progreso
-            registros_procesados[0] += 1
-            progress = (registros_procesados[0] / total_registros) * 100
-
-            socketio.emit(
-                "progress_update",
-                {
-                    "current": registros_procesados[0],
-                    "total": total_registros,
-                    "progress": round(progress, 2),
-                },
-                room=session_id,
-            )
-
-            print(f"[{resp.status_code}] -> {resp.text[:300]}...")
-            return resp.status_code < 400
-
-        except Exception as e:
-            print(f"Error con {url}: {e}")
-            continue
-
-    print("Todos los URLs fallaron para este registro")
-    return False
+        print(f"[{resp.status_code}] -> {resp.text[:300]}...")
+        return resp.status_code < 400
+    except Exception as e:
+        print(f"Error con {url}: {e}")
+        return False
 
 
 async def procesar_hoja_async(hoja, session_id):
@@ -400,12 +386,13 @@ async def procesar_hoja_async(hoja, session_id):
 
     # CORRECCIÓN: Configurar httpx.AsyncClient con SSL apropiado
     limits = httpx.Limits(max_connections=MAX_CONCURRENCY)
-
-    # Crear cliente con configuración SSL flexible
+    trust_env = True if "VCAP_APPLICATION" in os.environ else False
     async with httpx.AsyncClient(
         limits=limits,
-        verify=False,  # Deshabilitar verificación SSL para IPs directas
-        timeout=httpx.Timeout(60.0, connect=30.0),
+        verify=False,
+        timeout=httpx.Timeout(30.0, connect=10.0),
+        trust_env=trust_env,
+        http2=False,
     ) as client:
 
         # Dividir en batches
@@ -432,8 +419,7 @@ async def procesar_hoja_async(hoja, session_id):
 
 # ***************************************************************************************************************
 
-BATCH_SIZE = 50  # registros por batch
-MAX_CONCURRENCY = 500  # conexiones concurrentes
+ 
 
 
 @app.route("/enviar_datos", methods=["POST"])
@@ -490,11 +476,7 @@ def index():
         # Validar extensión del archivo
         if file and allowed_file(file.filename):
             try:
-                print("=== Iniciando borrar_datos ===")
-                result = delete_all_data()
-                print(f"Resultado: {result}")
-                # return jsonify(result)
-                print(jsonify(result))
+                socketio.start_background_task(delete_all_data)
 
                 # Guardar el archivo
                 filename = secure_filename(file.filename)
@@ -573,10 +555,9 @@ def delete_all_data(auth_token=None):
     """
     Función robusta con fallback a IP directa
     """
-    urls_to_try = [
-        "https://telcl-prd-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com/dataservices/truncateTempRep4CFE",
-        "https://52.23.1.211/dataservices/truncateTempRep4CFE",
-    ]
+
+    url = "https://telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com/dataservices/truncateTempRep4CFE"
+
 
     headers = {
         "Content-Type": "application/json",
@@ -590,58 +571,52 @@ def delete_all_data(auth_token=None):
 
     # Crear sesión robusta
     session = requests.Session()
+    session.trust_env = True
     retry_strategy = Retry(
         total=2, status_forcelist=[429, 500, 502, 503, 504], backoff_factor=1
     )
     adapter = HTTPAdapter(max_retries=retry_strategy)
     session.mount("https://", adapter)
 
-    last_error = None
+    
 
-    for i, url in enumerate(urls_to_try):
+    try:
+        response = session.post(
+            url,
+            headers=headers,
+            json={},
+            timeout=(10, 20),
+            verify=True,
+        )
+
+        print(f"Respuesta recibida: {response.status_code}")
+        response.raise_for_status()
+
         try:
-            print(f"Intentando URL {i+1}: {url}")
+            result = response.json()
+            return {
+                "success": True,
+                "deleted_count": result.get("deletedCount", 0),
+                "message": result.get("message", "Datos eliminados correctamente"),
+                "used_url": url,
+            }
+        except ValueError:
+            return {
+                "success": True,
+                "deleted_count": 0,
+                "message": f"Operación completada (Status: {response.status_code})",
+                "used_url": url,
+            }
 
-            response = session.post(
-                url,
-                headers=headers,
-                json={},
-                timeout=(30, 60),
-                verify=True if i == 0 else False,  # SSL verify solo para hostname
-            )
-
-            print(f"Respuesta recibida: {response.status_code}")
-            response.raise_for_status()
-
-            try:
-                result = response.json()
-                return {
-                    "success": True,
-                    "deleted_count": result.get("deletedCount", 0),
-                    "message": result.get("message", "Datos eliminados correctamente"),
-                    "used_url": url,
-                }
-            except ValueError:
-                return {
-                    "success": True,
-                    "deleted_count": 0,
-                    "message": f"Operación completada (Status: {response.status_code})",
-                    "used_url": url,
-                }
-
-        except Exception as e:
-            print(f"Error con {url}: {e}")
-            last_error = e
-            continue
-
-        finally:
-            session.close()
-
+    except Exception as e:
+        print(f"Error con {url}: {e}")
         return {
             "success": False,
             "deleted_count": 0,
-            "message": f"Error: Todas las conexiones fallaron. Último error: {str(last_error)}",
+            "message": f"Error: {str(e)}",
         }
+    finally:
+        session.close()
 
 
 @app.route("/borrar_datos", methods=["POST", "GET"])
