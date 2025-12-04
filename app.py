@@ -402,6 +402,11 @@ def enviar_datos():
         session_id = request.args.get("session_id")  # Obtener session_id
         modo = request.args.get("mode", "insert")
 
+        # Borrar datos existentes justo antes de enviar
+        delete_result = delete_all_data()
+        if not delete_result.get("success"):
+            return jsonify({"success": False, "error": delete_result.get("message", "Error al borrar datos")})
+
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         resultados = loop.run_until_complete(
@@ -451,7 +456,7 @@ def index():
         # Validar extensión del archivo
         if file and allowed_file(file.filename):
             try:
-                socketio.start_background_task(delete_all_data)
+                pass
 
                 # Guardar el archivo
                 filename = secure_filename(file.filename)
