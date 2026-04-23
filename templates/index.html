@@ -395,16 +395,56 @@
                 Swal.close();
 
                 if (result.success) {
-                    let resumen = result.resultados.map(r =>
-                        `Hoja ${r.hoja}: ${r.total} registros, ${r.exitos} ok, ${r.errores} errores`
-                    ).join("<br>");
+                    const status = result.status || "success";
+                    const totales = result.totales || { registros: 0, ok: 0, errores: 0 };
+                    const titleByStatus = {
+                        success: "Carga exitosa",
+                        warning: "Proceso completado con incidencias",
+                        error: "Proceso fallido",
+                    };
+                    const iconByStatus = {
+                        success: "success",
+                        warning: "warning",
+                        error: "error",
+                    };
+                    const resumenPorHojaBloques = (result.resultados || []).map(r => `
+                        <div class="upload-sheet-block">
+                            <div class="upload-sheet-title">Hoja ${r.hoja}</div>
+                            <div class="upload-sheet-stats">Total: ${r.total}, Correctos: ${r.exitos}, Incidencias: ${r.errores}</div>
+                        </div>
+                    `).join("");
+
+                    const incidencias = (result.resultados || [])
+                        .flatMap(r => (r.errores_detalle || []).map(e => {
+                            const rpu = e.rpu ? `RPU ${e.rpu}` : "RPU N/D";
+                            const motivo = e.motivo || "No se pudo guardar el registro";
+                            return `Hoja ${r.hoja} | ${rpu}: ${motivo}`;
+                        }))
+                        .slice(0, 5);
+
+                    const incidenciasHtml = incidencias.length
+                        ? `<hr><div class="upload-result-errors"><strong>Incidencias detectadas (maximo 5):</strong><br>${incidencias.join("<br>")}</div>`
+                        : "";
+
+                    const resumenGeneral = `
+                        <div class="upload-result-summary">
+                            <div class="upload-result-totals"><strong>Total:</strong> ${totales.registros} | <strong>Correctos:</strong> ${totales.ok} | <strong>Incidencias:</strong> ${totales.errores}</div>
+                        </div>
+                        <hr>
+                        <div class="upload-result-by-sheet">${resumenPorHojaBloques}</div>
+                        ${incidenciasHtml}
+                    `;
 
                     // Mostrar resultado y luego recargar
                     Swal.fire({
-                        title: "Proceso terminado",
-                        html: resumen,
-                        icon: "success",
+                        title: titleByStatus[status] || "Proceso terminado",
+                        html: resumenGeneral,
+                        icon: iconByStatus[status] || "info",
                         confirmButtonText: "Aceptar",
+                        width: 650,
+                        allowOutsideClick: false,
+                        allowEscapeKey: false,
+                        showCloseButton: false,
                     }).then((result) => {
                         if (result.isConfirmed) {
                             // Redirigir a una ruta que limpie y recargue
