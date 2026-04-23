@@ -69,3 +69,43 @@
 .table-sm th, .table-sm td {
     padding: 0.3rem;
 }
+
+.upload-result-summary,
+.upload-result-by-sheet,
+.upload-result-errors {
+    text-align: left;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+.upload-result-errors {
+    max-height: 180px;
+    overflow-y: auto;
+    padding-right: 0.5rem;
+}
+
+.upload-result-totals {
+    margin-bottom: 0.35rem;
+}
+
+.upload-result-by-sheet {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.upload-sheet-block {
+    border: 1px solid #d7dee8;
+    border-radius: 8px;
+    background: #f8fafc;
+    padding: 0.6rem 0.75rem;
+}
+
+.upload-sheet-title {
+    font-weight: 700;
+    color: #213547;
+}
+
+.upload-sheet-stats {
+    color: #3a4b5c;
+    font-size: 0.92rem;
+}

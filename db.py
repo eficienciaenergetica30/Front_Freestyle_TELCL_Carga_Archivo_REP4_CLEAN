@@ -1,5 +1,6 @@
 import os
 import json
+from collections import Counter
 from hdbcli import dbapi
 
 
@@ -85,12 +86,22 @@ def get_hana_connection():
         encrypt=True,
         sslValidateCertificate=False,
     )
+    # Evita commits parciales no deseados durante executemany en algunos drivers.
+    try:
+        conn.setautocommit(False)
+    except Exception:
+        pass
     schema = c.get("schema")
     if schema:
         cur = conn.cursor()
         cur.execute(f'SET SCHEMA "{schema}"')
         cur.close()
     return conn
+
+
+def _is_unique_violation(error_message):
+    msg = str(error_message or "").lower()
+    return "unique constraint violated" in msg or "already exists" in msg
 
 
 def _columns():
@@ -149,6 +160,10 @@ def insert_temp_rep4cfe(conn, entities):
     qmarks = ",".join(["?"] * len(cols))
     sql = 'insert into ' + _table_fqn() + ' (' + ",".join([f'"{c}"' for c in cols]) + f") values ({qmarks})"
     params = [[e.get(c) for c in cols] for e in entities]
+    rpu_idx = cols.index("RPU") if "RPU" in cols else None
+    rpu_values = [p[rpu_idx] for p in params] if rpu_idx is not None else []
+    rpu_counts = Counter(rpu_values)
+    rpu_success_once = set()
     cur = conn.cursor()
     inserted = 0
     failed = 0
@@ -163,20 +178,39 @@ def insert_temp_rep4cfe(conn, entities):
     except Exception as e:
         print(f"Error en inserción batch: {e}")
         try:
+            conn.rollback()
             for idx, p in enumerate(params):
+                rpu_val = p[rpu_idx] if rpu_idx is not None else None
                 try:
                     cur.execute(sql, p)
                     inserted += 1
+                    if rpu_val is not None:
+                        rpu_success_once.add(rpu_val)
                 except Exception as ie:
-                    failed += 1
-                    rpu_idx = cols.index("RPU") if "RPU" in cols else None
-                    rpu_val = p[rpu_idx] if rpu_idx is not None else None
                     msg = str(ie)
+
+                    if _is_unique_violation(msg) and rpu_val is not None:
+                        # Si el RPU solo aparece una vez en el archivo, este choque suele ser
+                        # por inserción parcial del executemany: se considera ya insertado.
+                        if rpu_counts.get(rpu_val, 0) <= 1:
+                            inserted += 1
+                            rpu_success_once.add(rpu_val)
+                            continue
+
+                        # Si el RPU se repite en el lote, solo se marca error en las
+                        # ocurrencias posteriores a la primera inserción exitosa.
+                        if rpu_val not in rpu_success_once:
+                            inserted += 1
+                            rpu_success_once.add(rpu_val)
+                            continue
+
+                    failed += 1
                     errors.append({"index": idx, "rpu": rpu_val, "message": msg})
             conn.commit()
             print(f"Insert batch parcial: ok={inserted}, errores={failed}")
             return {"inserted": inserted, "failed": failed, "errors": errors, "sql": sql}
         except Exception as fe:
+            conn.rollback()
             print(f"Fallo en fallback por registro: {fe}")
             return {"inserted": inserted, "failed": failed, "errors": errors or [{"index": None, "rpu": None, "message": str(fe)}], "sql": sql}
     finally:
@@ -218,6 +252,7 @@ def upsert_temp_rep4cfe(conn, entities):
                 inserted += len(to_insert)
             except Exception as be:
                 print(f"Error en inserción batch dentro de upsert: {be}")
+                conn.rollback()
                 for pos, p in enumerate(to_insert):
                     idx = idx_map[pos]
                     try:
@@ -232,6 +267,7 @@ def upsert_temp_rep4cfe(conn, entities):
         print(f"Upsert resumen: updated={updated}, inserted={inserted}, errores={failed}")
         return {"updated": updated, "inserted": inserted, "failed": failed, "errors": errors, "update_sql": update_sql, "insert_sql": insert_sql}
     except Exception as e:
+        conn.rollback()
         print(f"Fallo general en upsert: {e}")
         return {"updated": updated, "inserted": inserted, "failed": failed, "errors": errors or [{"index": None, "rpu": None, "message": str(e)}]}
     finally:

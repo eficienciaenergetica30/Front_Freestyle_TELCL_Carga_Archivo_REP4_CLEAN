@@ -74,6 +74,19 @@ def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+def clasificar_error_amigable(message):
+    texto = str(message or "").lower()
+
+    if "unique constraint violated" in texto or "already exists" in texto:
+        return "Registro duplicado"
+    if "not null" in texto or "cannot be null" in texto:
+        return "Dato obligatorio faltante"
+    if "invalid" in texto or "format" in texto:
+        return "Formato de dato invalido"
+
+    return "No se pudo guardar el registro"
+
+
 def encontrar_fila_encabezados(sheet):
     """Encuentra la fila donde comienzan los encabezados relevantes"""
     encabezados_esperados = [
@@ -346,6 +359,7 @@ async def procesar_hoja_db_async(hoja, session_id, modo):
     total = len(registros)
     errores = 0
     exitos = 0
+    errores_detalle = []
     registros_procesados = [0]
     conn = get_hana_connection()
     try:
@@ -371,6 +385,16 @@ async def procesar_hoja_db_async(hoja, session_id, modo):
                 )
                 for e in result["errors"][:5]:
                     print(e)
+                for e in result["errors"]:
+                    if len(errores_detalle) >= 5:
+                        break
+                    errores_detalle.append(
+                        {
+                            "rpu": e.get("rpu"),
+                            "motivo": clasificar_error_amigable(e.get("message")),
+                            "operation": e.get("operation", modo),
+                        }
+                    )
             print(
                 f"Lote {i//BATCH_SIZE+1} hoja {hoja_nombre}: ok={exitos}, errores={errores}, procesados={registros_procesados[0]}/{total}"
             )
@@ -386,7 +410,13 @@ async def procesar_hoja_db_async(hoja, session_id, modo):
             )
     finally:
         conn.close()
-    return {"hoja": hoja_nombre, "total": total, "exitos": exitos, "errores": errores}
+    return {
+        "hoja": hoja_nombre,
+        "total": total,
+        "exitos": exitos,
+        "errores": errores,
+        "errores_detalle": errores_detalle,
+    }
 
 
 # ***************************************************************************************************************
@@ -415,7 +445,29 @@ def enviar_datos():
             )
         )
 
-        return jsonify({"success": True, "resultados": resultados})
+        total_registros = sum(r.get("total", 0) for r in resultados)
+        total_ok = sum(r.get("exitos", 0) for r in resultados)
+        total_errores = sum(r.get("errores", 0) for r in resultados)
+
+        if total_errores == 0:
+            status = "success"
+        elif total_ok > 0:
+            status = "warning"
+        else:
+            status = "error"
+
+        return jsonify(
+            {
+                "success": True,
+                "status": status,
+                "totales": {
+                    "registros": total_registros,
+                    "ok": total_ok,
+                    "errores": total_errores,
+                },
+                "resultados": resultados,
+            }
+        )
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
