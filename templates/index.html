@@ -193,23 +193,79 @@
             });
 
             // Manejar el envío del formulario
-            $("#uploadForm").on("submit", function () {
-                // Convertir fecha
-                var fecha = $("#datePicker").val();
-                if (fecha) {
-                    var parts = fecha.split("/");
-                    var formattedDate = parts[1] + "-" + parts[0] + "-01";
-                    $("#fechaFacturacion").val(formattedDate);
+            // Manejar el envío del formulario
+            $("#uploadForm").on("submit", function (e) {
+                // 1. Prevenir el envío automático para poder mostrar la confirmación primero
+                e.preventDefault();
+                var form = this;
+
+                // 2. Obtener y parsear la fecha seleccionada
+                var fecha = $("#datePicker").val(); // Formato MM/YYYY
+                if (!fecha) {
+                    Swal.fire("Error", "Por favor, selecciona una fecha de facturación.", "error");
+                    return;
                 }
 
-                // Mostrar SweetAlert como loader
+                // 3. Mostrar la alerta de confirmación con el periodo seleccionado
                 Swal.fire({
-                    title: "Procesando...",
-                    text: "Estamos leyendo el archivo, por favor espera.",
-                    allowOutsideClick: false,
-                    didOpen: () => {
-                        Swal.showLoading();
-                    },
+                    title: "¿Confirmar periodo de facturación?",
+                    html: `Ha seleccionado el periodo: <b>${fecha}</b>. ¿Está seguro de que desea continuar con el procesamiento?`,
+                    icon: "question",
+                    showCancelButton: true,
+                    confirmButtonColor: "#006eff",
+                    cancelButtonColor: "#6c757d",
+                    confirmButtonText: "Sí, continuar",
+                    cancelButtonText: "No, regresar y limpiar",
+                    allowOutsideClick: false
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        // --- SI EL USUARIO CONTINÚA ---
+
+                        // Formatear la fecha en el campo oculto antes de enviar
+                        var parts = fecha.split("/");
+                        var formattedDate = parts[1] + "-" + parts[0] + "-01";
+                        $("#fechaFacturacion").val(formattedDate);
+
+                        // Mostrar el loader original de procesamiento
+                        Swal.fire({
+                            title: "Procesando...",
+                            text: "Estamos leyendo el archivo, por favor espera.",
+                            allowOutsideClick: false,
+                            didOpen: () => {
+                                Swal.showLoading();
+                            },
+                        });
+
+                        // Desvincular el evento submit temporalmente para enviar el formulario de manera nativa
+                        form.submit();
+
+                    } else if (result.dismiss === Swal.DismissReason.cancel) {
+                        // --- SI EL USUARIO CANCELA Y QUIERE LIMPIAR ---
+
+                        // Limpiar el input de archivo y el datepicker
+                        $("#excelFile").val("");
+                        $("#datePicker").val("").datepicker("update"); // Limpia visualmente y el estado interno del widget
+                        $("#fechaFacturacion").val("");
+
+                        // 2. Desvanecer y remover la sección de resultados (la tabla) si es que ya existía una
+                        $(".mt-4:has(.alert-info)").fadeOut(400, function () {
+                            $(this).remove();
+                        });
+
+                        // Apuntamos directamente al contenedor del botón de enviar para desaparecerlo
+                        $("#sendDataBtn").closest(".mt-4").fadeOut(400, function () {
+                            $(this).remove();
+                        });
+
+                        // Alerta opcional de confirmación de limpieza
+                        Swal.fire({
+                            title: "Campos limpios",
+                            text: "Por favor, selecciona el archivo y el periodo correctos.",
+                            icon: "info",
+                            timer: 2000,
+                            showConfirmButton: false
+                        });
+                    }
                 });
             });
 
