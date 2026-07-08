@@ -1,5 +1,5 @@
 applications:
-  - name: carga-archivo-REP4-clean-PRD
+  - name: carga-archivo-REP4-clean-DEV
     memory: 1G
     buildpack: https://github.com/cloudfoundry/python-buildpack.git#v1.8.4
     command: gunicorn --worker-class eventlet -w 1 app:app --bind 0.0.0.0:$PORT --timeout 120
