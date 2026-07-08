@@ -33,7 +33,7 @@ def configure_dns_for_sap_btp():
                 return original_getaddrinfo(host, port, family, type, proto, flags)
             except socket.gaierror as e:
                 print(f"DNS resolution failed for {host}, trying IP fallback...")
-                if host == "telcl-prd-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com":
+                if host == "telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com":
                     return [
                         (
                             socket.AF_INET,
@@ -606,7 +606,7 @@ def test_connection():
         resp = requests.get(
             "https://52.23.1.211",
             headers={
-                "Host": "telcl-prd-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com"
+                "Host": "telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com"
             },
             timeout=10,
             verify=False,
@@ -627,7 +627,7 @@ def test_connection():
 
 @app.route("/debug-connectivity")
 def debug_connectivity():
-    hostname = "telcl-prd-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com"
+    hostname = "telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com"
     results = {}
 
     # Test DNS
