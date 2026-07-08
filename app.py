@@ -594,7 +594,7 @@ def test_connection():
     try:
         target = (
             BASE_URL
-            or "https://telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com"
+            or "https://telcl-prd-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com"
         )
         resp = requests.get(target, timeout=10)
         results["hostname_test"] = {"success": True, "status": resp.status_code}
