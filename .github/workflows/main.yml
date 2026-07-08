@@ -2,55 +2,112 @@ name: Replace Dev URLs with PRD URLs on Carga Archivo REP4 CFE FLASK
 
 on:
   pull_request:
-    types: [closed] # Se activa solo cuando se cierra un PR
-    branches: 
-      - main # Se activa solo en push a main
+    types: [closed]
+    branches:
+      - main
+
+# Necesario para poder hacer push directo a main
+permissions:
+  contents: write
 
 jobs:
   replace-urls:
+    # Clave: solo correr si el PR realmente se mergeó (no si se cerró sin mergear)
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Necesario para commits posteriores
+          ref: main          # Fuerza a pararse en main real, no en el merge commit de prueba del PR
+          fetch-depth: 0
 
       - name: Detect manifest file (manifest.yml o mainfest.yml)
         id: mf
         run: |
           if [ -f "manifest.yml" ]; then
-            echo "file=manifest.yml" >> $GITHUB_OUTPUT
+            echo "file=manifest.yml" >> "$GITHUB_OUTPUT"
           elif [ -f "mainfest.yml" ]; then
-            echo "file=mainfest.yml" >> $GITHUB_OUTPUT
+            echo "file=mainfest.yml" >> "$GITHUB_OUTPUT"
           else
-            echo "No manifest file found" >&2
+            echo "::error::No se encontró manifest.yml ni mainfest.yml en la raíz del repo"
+            exit 1
+          fi
+
+      - name: Verify app.py exists
+        run: |
+          if [ ! -f "app.py" ]; then
+            echo "::error::No se encontró app.py en la raíz del repo. Archivos app.py en el repo:"
+            find . -name "app.py"
             exit 1
           fi
 
       - name: Replace DEV → PRD in app.py
         run: |
-          # Cambia solo el subdominio; conserva protocolo/host/path
+          # Contar ocurrencias ANTES de reemplazar, para validar que sí hay algo que cambiar
+          BEFORE=$(grep -c "telcl-dev-db-cap" app.py || true)
+          echo "Ocurrencias de 'telcl-dev-db-cap' encontradas en app.py: $BEFORE"
+
+          if [ "$BEFORE" -eq 0 ]; then
+            echo "::error::No se encontró 'telcl-dev-db-cap' en app.py. Revisa el archivo, puede que ya esté en PRD o que el patrón haya cambiado."
+            exit 1
+          fi
+
           sed -i 's/telcl-dev-db-cap/telcl-prd-db-cap/g' app.py
+
+          # Validar que efectivamente ya no queden referencias a dev
+          AFTER=$(grep -c "telcl-dev-db-cap" app.py || true)
+          if [ "$AFTER" -ne 0 ]; then
+            echo "::error::Quedaron $AFTER referencias a 'telcl-dev-db-cap' en app.py después del reemplazo"
+            exit 1
+          fi
+
+          echo "✅ app.py: $BEFORE referencia(s) reemplazada(s) correctamente"
 
       - name: Replace DEV → PRD in manifest
         run: |
           MF="${{ steps.mf.outputs.file }}"
 
-          # Nombre de la app
+          BEFORE_APP=$(grep -c "carga-archivo-REP4-clean-DEV" "$MF" || true)
+          BEFORE_ENV=$(grep -Ec "ENVIRONMENT:[[:space:]]*dev" "$MF" || true)
+          BEFORE_URL=$(grep -c "telcl-dev-db-cap" "$MF" || true)
+
+          echo "Ocurrencias encontradas en $MF -> nombre app: $BEFORE_APP, ENVIRONMENT: $BEFORE_ENV, URLs: $BEFORE_URL"
+
+          if [ "$BEFORE_APP" -eq 0 ] && [ "$BEFORE_ENV" -eq 0 ] && [ "$BEFORE_URL" -eq 0 ]; then
+            echo "::error::No se encontró ningún patrón DEV esperado en $MF. Revisa el archivo."
+            exit 1
+          fi
+
           sed -i 's/carga-archivo-REP4-clean-DEV/carga-archivo-REP4-clean-PRD/g' "$MF"
-
-          # ENVIRONMENT
           sed -i 's/ENVIRONMENT:[[:space:]]*dev/ENVIRONMENT: prd/g' "$MF"
-
-          # Dominios en URLs
           sed -i 's/telcl-dev-db-cap/telcl-prd-db-cap/g' "$MF"
 
-          # (Buildpack se mantiene igual a la URL v1.8.4 como indicaste para PRD)
-      
+          # Validar que no haya quedado nada en dev
+          AFTER=$(grep -c "telcl-dev-db-cap\|carga-archivo-REP4-clean-DEV" "$MF" || true)
+          if [ "$AFTER" -ne 0 ]; then
+            echo "::error::Quedaron $AFTER referencias DEV en $MF después del reemplazo"
+            exit 1
+          fi
+
+          echo "✅ $MF actualizado correctamente"
+
+      - name: Show diff for review
+        run: |
+          echo "----- DIFF -----"
+          git diff --stat
+          git diff
+
       - name: Commit and push changes
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           git add .
-          git diff --quiet && git diff --staged --quiet || git commit -m "[Automated] Replaced DEV URLs with PRD URLs"
-          git push
+
+          if git diff --staged --quiet; then
+            echo "::warning::No hay cambios para commitear. ¿Ya estaba todo en PRD?"
+            exit 0
+          fi
+
+          git commit -m "[Automated] Replaced DEV URLs with PRD URLs"
+          git push origin HEAD:main
