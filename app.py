@@ -194,6 +194,15 @@ def procesar_excel(filepath, fecha_facturacion):
             except ValueError:
                 idx_tarifa = None
 
+            try:
+                idx_energia = encabezados.index("ENERGIA")
+            except ValueError:
+                idx_energia = None
+            try:
+                idx_iva = encabezados.index("IVA")
+            except ValueError:
+                idx_iva = None
+
             # Recolectar filas válidas (no vacías, y sin "SUBTOTAL" ni "TOTAL")
             filas_validas = []
             for row in range(fila_inicio + 1, sheet.max_row + 1):
@@ -223,11 +232,12 @@ def procesar_excel(filepath, fecha_facturacion):
                 # Normalizar/formatar cada celda según corresponda
                 fila_datos = []
                 for idx_col, cell_value in enumerate(row_values, start=1):
-                    # idx_tarifa es índice 0-based en encabezados → comparamos con idx_col-1
                     if idx_tarifa is not None and (idx_col - 1) == idx_tarifa:
                         fila_datos.append(normalize_tarifa(cell_value))
                     else:
-                        fila_datos.append(formatear_valor(cell_value))
+                        fila_datos.append(
+                            formatear_valor(cell_value)
+                        )  # ahora 4 decimales por defecto
 
                 # 🔎 recortar a los 21 campos originales si hay más
                 fila_datos = fila_datos[:21]
@@ -277,15 +287,15 @@ def formatear_fecha(valor):
     return valor
 
 
-def formatear_valor(valor):
-    # Fechas → se manejan aparte
+def formatear_valor(valor, decimales=4):
+    """Convierte fechas a texto ISO y números a Decimal cuantizado a N decimales"""
     if isinstance(valor, (datetime, date)):
         return valor.strftime("%Y-%m-%d")
 
-    # Números → los pasamos a Decimal para evitar flotantes
     if isinstance(valor, (int, float)):
-        dec = Decimal(str(valor)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        return f"{dec:,}"  # añade comas como separadores de miles
+        paso = Decimal(1).scaleb(-decimales)  # ej. 0.0001 para 4 decimales
+        dec = Decimal(str(valor)).quantize(paso, rounding=ROUND_HALF_UP)
+        return f"{dec:,}"
 
     return valor
 
@@ -322,10 +332,6 @@ def a_decimal(valor):
 
 
 def mapear_registro(fila):
-    # print("FILA: ", fila)
-    # print("Dato en fila[21]:", fila[21])  # imprime solo el dato de la posición 22
-    # print("Dato en fila[22]:", fila[22])  # imprime solo el dato de la posición 22
-    # print("Dato en fila[23]:", fila[23])  # imprime solo el dato de la posición 22
     return {
         "DIVISION": str(fila[0]),
         "RPU": str(fila[1]),
@@ -336,19 +342,19 @@ def mapear_registro(fila):
         "FROMDATE": str(fila[6]),
         "TODATE": str(fila[7]),
         "BILLDATE": f"{fila[22]}-{str(fila[21]).zfill(2)}-01",
-        "CONSUMPTION": float(a_decimal(fila[8])),
-        "DEMAND": float(a_decimal(fila[9])),
-        "REACTIVEPOWER": float(a_decimal(fila[10])),
-        "POWERFACTOR": float(a_decimal(fila[11])),
-        "LOADFACTOR": float(a_decimal(fila[12])),
-        "ENERGY": float(a_decimal(fila[13])),
-        "IVA": float(a_decimal(fila[14])),
-        "DAP": float(a_decimal(fila[15])),
-        "CHARGES": float(a_decimal(fila[16])),
-        "CREDITS": float(a_decimal(fila[17])),
-        "TOTAL": float(a_decimal(fila[18])),
-        "VALIDATION": float(a_decimal(fila[19])),
-        "DIFFERENCE": float(a_decimal(fila[20])),
+        "CONSUMPTION": a_decimal(fila[8]),
+        "DEMAND": a_decimal(fila[9]),
+        "REACTIVEPOWER": a_decimal(fila[10]),
+        "POWERFACTOR": a_decimal(fila[11]),
+        "LOADFACTOR": a_decimal(fila[12]),
+        "ENERGY": a_decimal(fila[13]),
+        "IVA": a_decimal(fila[14]),
+        "DAP": a_decimal(fila[15]),
+        "CHARGES": a_decimal(fila[16]),
+        "CREDITS": a_decimal(fila[17]),
+        "TOTAL": a_decimal(fila[18]),
+        "VALIDATION": a_decimal(fila[19]),
+        "DIFFERENCE": a_decimal(fila[20]),
         "IVATYPE": fila[23] if len(fila) > 23 else "",
     }
 
@@ -421,8 +427,6 @@ async def procesar_hoja_db_async(hoja, session_id, modo):
 
 # ***************************************************************************************************************
 
- 
-
 
 @app.route("/enviar_datos", methods=["POST"])
 def enviar_datos():
@@ -435,7 +439,12 @@ def enviar_datos():
         # Borrar datos existentes justo antes de enviar
         delete_result = delete_all_data()
         if not delete_result.get("success"):
-            return jsonify({"success": False, "error": delete_result.get("message", "Error al borrar datos")})
+            return jsonify(
+                {
+                    "success": False,
+                    "error": delete_result.get("message", "Error al borrar datos"),
+                }
+            )
 
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -540,9 +549,6 @@ def index():
     return render_template("index.html")
 
 
- 
-
-
 def delete_all_data():
     try:
         conn = get_hana_connection()
@@ -586,7 +592,10 @@ def test_connection():
 
     # Test con hostname
     try:
-        target = BASE_URL or "https://telcl-prd-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com"
+        target = (
+            BASE_URL
+            or "https://telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com"
+        )
         resp = requests.get(target, timeout=10)
         results["hostname_test"] = {"success": True, "status": resp.status_code}
     except Exception as e:
