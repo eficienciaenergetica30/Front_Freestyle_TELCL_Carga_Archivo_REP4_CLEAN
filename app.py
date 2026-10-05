@@ -66,6 +66,8 @@ BATCH_SIZE = 50
 MAX_CONCURRENCY = 500
 
 HTTP_TIMEOUT = float(os.getenv("HTTP_TIMEOUT", "30"))
+FINAL_PROCESS_URL = os.getenv("FINAL_PROCESS_URL", "https://tlcl-processes-hub.cfapps.us10.hana.ondemand.com/tlcl-hub/tlcl13")
+FINAL_PROCESS_TIMEOUT = float(os.getenv("FINAL_PROCESS_TIMEOUT", "60"))
 if not os.path.exists(app.config["UPLOAD_FOLDER"]):
     os.makedirs(app.config["UPLOAD_FOLDER"])
 
@@ -428,6 +430,41 @@ async def procesar_hoja_db_async(hoja, session_id, modo):
 # ***************************************************************************************************************
 
 
+def ejecutar_proceso_final():
+    """Última operación: esperar la API sin reintentos ni exponer su contenido."""
+    print(
+        f"[Proceso final] Iniciando POST {FINAL_PROCESS_URL} "
+        f"(timeout={FINAL_PROCESS_TIMEOUT}s)",
+        flush=True,
+    )
+    try:
+        with requests.request(
+            "POST",
+            FINAL_PROCESS_URL,
+            timeout=FINAL_PROCESS_TIMEOUT,
+            allow_redirects=False,
+        ) as response:
+            code = response.status_code
+            print(f"[Proceso final] Respuesta recibida: HTTP {code}", flush=True)
+    except requests.Timeout:
+        code = "TIMEOUT"
+        print("[Proceso final] TIMEOUT: no se recibió respuesta a tiempo.", flush=True)
+    except requests.RequestException:
+        code = "CONEXION"
+        print("[Proceso final] CONEXION: no se pudo completar el llamado.", flush=True)
+
+    success = code == 200
+    return {
+        "success": success,
+        "code": code,
+        "message": (
+            "Proceso finalizado con éxito."
+            if success
+            else f"Ha surgido un problema. Código de error: {code}."
+        ),
+    }
+
+
 @app.route("/enviar_datos", methods=["POST"])
 def enviar_datos():
     try:
@@ -439,6 +476,7 @@ def enviar_datos():
         # Borrar datos existentes justo antes de enviar
         delete_result = delete_all_data()
         if not delete_result.get("success"):
+            print("[Proceso final] Omitido: falló la limpieza previa a la carga.", flush=True)
             return jsonify(
                 {
                     "success": False,
@@ -448,11 +486,15 @@ def enviar_datos():
 
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        resultados = loop.run_until_complete(
-            asyncio.gather(
-                *[procesar_hoja_db_async(h, session_id, modo) for h in hojas]
+        try:
+            resultados = loop.run_until_complete(
+                asyncio.gather(
+                    *[procesar_hoja_db_async(h, session_id, modo) for h in hojas]
+                )
             )
-        )
+        finally:
+            loop.close()
+            asyncio.set_event_loop(None)
 
         total_registros = sum(r.get("total", 0) for r in resultados)
         total_ok = sum(r.get("exitos", 0) for r in resultados)
@@ -465,6 +507,20 @@ def enviar_datos():
         else:
             status = "error"
 
+        # Todas las escrituras y cierres de conexión deben terminar antes de mover datos.
+        proceso_final = None
+        if total_registros > 0 and total_errores == 0 and total_ok == total_registros:
+            proceso_final = ejecutar_proceso_final()
+            if not proceso_final["success"]:
+                status = "error"
+        else:
+            print(
+                "[Proceso final] Omitido: se requiere una carga completa, "
+                "sin errores y con registros. "
+                f"Total={total_registros}, correctos={total_ok}, errores={total_errores}.",
+                flush=True,
+            )
+
         return jsonify(
             {
                 "success": True,
@@ -475,10 +531,16 @@ def enviar_datos():
                     "errores": total_errores,
                 },
                 "resultados": resultados,
+                "proceso_final": proceso_final,
             }
         )
 
     except Exception as e:
+        print(
+            f"[Carga] Flujo interrumpido por {type(e).__name__}; "
+            "no se confirmó la finalización del proceso.",
+            flush=True,
+        )
         return jsonify({"success": False, "error": str(e)})
 
 

@@ -434,21 +434,30 @@
                     body: JSON.stringify({ hojas: hojasData })
                 });
 
+                const text = await response.text();
+                const cleaned = text.replace(/^\uFEFF/, "").replace(/^\s*\)\]\}',?\s*/, "");
                 let result;
                 try {
-                    result = await response.json();
-                } catch (parseErr) {
-                    const text = await response.text();
-                    const cleaned = text.replace(/^\uFEFF/, "").replace(/^\s*\)\]\}',?\s*/, "");
-                    try {
-                        result = JSON.parse(cleaned);
-                    } catch (e) {
-                        console.error("Respuesta no-JSON:", text.slice(0, 200));
-                        throw new Error("Respuesta inválida del servidor");
-                    }
+                    result = JSON.parse(cleaned);
+                } catch (e) {
+                    throw new Error(`Ha surgido un problema. Código de error: ${response.status}.`);
                 }
                 socket.off('progress_update'); // Dejar de escuchar actualizaciones
                 Swal.close();
+
+                if (result.proceso_final) {
+                    await Swal.fire({
+                        title: result.proceso_final.success ? "Proceso finalizado" : "Error",
+                        text: result.proceso_final.message,
+                        icon: result.proceso_final.success ? "success" : "error",
+                        confirmButtonText: "Aceptar",
+                        allowOutsideClick: false,
+                        allowEscapeKey: false,
+                    });
+                    // No volver a cargar datos ya guardados si falla el proceso final.
+                    window.location.href = "/limpiar_y_redirigir";
+                    return;
+                }
 
                 if (result.success) {
                     const status = result.status || "success";
