@@ -32,8 +32,8 @@ def configure_dns_for_sap_btp():
             try:
                 return original_getaddrinfo(host, port, family, type, proto, flags)
             except socket.gaierror as e:
-                print(f"DNS resolution failed for {host}, trying IP fallback...")
                 if host == "telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com":
+                    print(f"DNS resolution failed for {host}, trying IP fallback...", flush=True)
                     return [
                         (
                             socket.AF_INET,
@@ -43,7 +43,8 @@ def configure_dns_for_sap_btp():
                             ("52.23.1.211", port),
                         )
                     ]
-                raise e
+                print(f"DNS resolution failed for {host}; no IP fallback configured: {e}", flush=True)
+                raise
 
         socket.getaddrinfo = patched_getaddrinfo
 
@@ -438,20 +439,28 @@ def ejecutar_proceso_final():
         flush=True,
     )
     try:
-        with requests.request(
-            "POST",
+        with requests.post(
             FINAL_PROCESS_URL,
             timeout=FINAL_PROCESS_TIMEOUT,
             allow_redirects=False,
         ) as response:
             code = response.status_code
             print(f"[Proceso final] Respuesta recibida: HTTP {code}", flush=True)
+            if code == 200:
+                try:
+                    payload = response.json()
+                except ValueError:
+                    app.logger.warning("[Proceso final] HTTP 200 con respuesta no JSON.")
+                else:
+                    if isinstance(payload, dict) and payload.get("success") is False:
+                        app.logger.error("[Proceso final] HTTP 200 pero el servicio reportó success=false.")
+                        code = "PROCESO"
     except requests.Timeout:
         code = "TIMEOUT"
-        print("[Proceso final] TIMEOUT: no se recibió respuesta a tiempo.", flush=True)
+        app.logger.exception("[Proceso final] TIMEOUT al llamar a %s", FINAL_PROCESS_URL)
     except requests.RequestException:
         code = "CONEXION"
-        print("[Proceso final] CONEXION: no se pudo completar el llamado.", flush=True)
+        app.logger.exception("[Proceso final] CONEXION al llamar a %s", FINAL_PROCESS_URL)
 
     success = code == 200
     return {

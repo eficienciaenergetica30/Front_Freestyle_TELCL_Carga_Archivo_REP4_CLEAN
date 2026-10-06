@@ -36,6 +36,7 @@ class FinalProcessTests(unittest.TestCase):
             pass
 
         self.response = Mock(status_code=200)
+        self.response.json.return_value = {"success": True, "output_params": [1, "Proceso finalizado con éxito."]}
         self.response.__enter__ = Mock(return_value=self.response)
         self.response.__exit__ = Mock(return_value=False)
 
@@ -45,11 +46,12 @@ class FinalProcessTests(unittest.TestCase):
             return self.response
 
         self.http = SimpleNamespace(
-            request=Mock(side_effect=call_api),
+            post=Mock(side_effect=call_api),
             Timeout=Timeout, RequestException=RequestException,
         )
         self.ns = {
             "requests": self.http, "asyncio": asyncio,
+            "app": SimpleNamespace(logger=Mock()),
             "FINAL_PROCESS_URL": "https://tlcl-processes-hub.cfapps.us10.hana.ondemand.com/tlcl-hub/tlcl13",
             "FINAL_PROCESS_TIMEOUT": 60,
             "request": SimpleNamespace(
@@ -67,9 +69,22 @@ class FinalProcessTests(unittest.TestCase):
         self.assertEqual(result["proceso_final"], {
             "success": True, "code": 200, "message": "Proceso finalizado con éxito."
         })
-        self.http.request.assert_called_once_with(
-            "POST", self.ns["FINAL_PROCESS_URL"], timeout=60, allow_redirects=False
+        self.http.post.assert_called_once_with(
+            self.ns["FINAL_PROCESS_URL"], timeout=60, allow_redirects=False
         )
+
+    def test_http_200_with_failed_procedure(self):
+        self.response.json.return_value = {"success": False, "message": "Detalle interno"}
+        result = self.ns["enviar_datos"]()["proceso_final"]
+        self.assertFalse(result["success"])
+        self.assertEqual(result["code"], "PROCESO")
+        self.assertNotIn("Detalle interno", result["message"])
+
+    def test_http_200_without_json(self):
+        self.response.json.side_effect = ValueError("Invalid JSON")
+        result = self.ns["enviar_datos"]()["proceso_final"]
+        self.assertTrue(result["success"])
+        self.ns["app"].logger.warning.assert_called_once()
 
     def test_non_200_codes_are_errors_without_api_body(self):
         for code in [201, 204, 302, 400, 500]:
@@ -86,10 +101,11 @@ class FinalProcessTests(unittest.TestCase):
         for exception, code in [(self.http.Timeout, "TIMEOUT"),
                                 (self.http.RequestException, "CONEXION")]:
             with self.subTest(code=code):
-                self.http.request.side_effect = exception("Información interna")
+                self.http.post.side_effect = exception("Información interna")
                 result = self.ns["enviar_datos"]()["proceso_final"]
                 self.assertEqual(result["code"], code)
                 self.assertNotIn("Información interna", result["message"])
+                self.ns["app"].logger.exception.assert_called()
 
     def test_incomplete_or_empty_upload_never_calls_api(self):
         for rows in [
@@ -100,17 +116,17 @@ class FinalProcessTests(unittest.TestCase):
             self.rows = rows
             result = self.ns["enviar_datos"]()
             self.assertIsNone(result["proceso_final"])
-        self.http.request.assert_not_called()
+        self.http.post.assert_not_called()
 
     def test_delete_failure_never_calls_api(self):
         self.ns["delete_all_data"].return_value = {"success": False}
         self.assertFalse(self.ns["enviar_datos"]()["success"])
-        self.http.request.assert_not_called()
+        self.http.post.assert_not_called()
 
     def test_sheet_exception_never_calls_api(self):
         self.rows = []
         self.assertFalse(self.ns["enviar_datos"]()["success"])
-        self.http.request.assert_not_called()
+        self.http.post.assert_not_called()
 
 
 if __name__ == "__main__":
