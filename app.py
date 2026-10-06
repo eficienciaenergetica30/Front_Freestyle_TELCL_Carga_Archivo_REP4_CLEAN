@@ -66,7 +66,7 @@ BATCH_SIZE = 50
 MAX_CONCURRENCY = 500
 
 HTTP_TIMEOUT = float(os.getenv("HTTP_TIMEOUT", "30"))
-FINAL_PROCESS_URL = os.getenv("FINAL_PROCESS_URL", "https://tlcl-processes-hub.cfapps.us10.hana.ondemand.com/tlcl-hub/tlcl13")
+FINAL_PROCESS_URL = os.getenv("FINAL_PROCESS_URL", "https://tlcl-processes-hub-prd.cfapps.us10.hana.ondemand.com/tlcl-hub/tlcl13")
 FINAL_PROCESS_TIMEOUT = float(os.getenv("FINAL_PROCESS_TIMEOUT", "60"))
 if not os.path.exists(app.config["UPLOAD_FOLDER"]):
     os.makedirs(app.config["UPLOAD_FOLDER"])
