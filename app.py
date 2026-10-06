@@ -67,7 +67,7 @@ BATCH_SIZE = 50
 MAX_CONCURRENCY = 500
 
 HTTP_TIMEOUT = float(os.getenv("HTTP_TIMEOUT", "30"))
-FINAL_PROCESS_URL = os.getenv("FINAL_PROCESS_URL", "https://tlcl-processes-hub.cfapps.us10.hana.ondemand.com/tlcl-hub/tlcl13")
+FINAL_PROCESS_URL = os.getenv("FINAL_PROCESS_URL", "https://tlcl-processes-hub-prd.cfapps.us10.hana.ondemand.com/tlcl-hub/tlcl13")
 FINAL_PROCESS_TIMEOUT = float(os.getenv("FINAL_PROCESS_TIMEOUT", "60"))
 if not os.path.exists(app.config["UPLOAD_FOLDER"]):
     os.makedirs(app.config["UPLOAD_FOLDER"])
@@ -665,7 +665,7 @@ def test_connection():
     try:
         target = (
             BASE_URL
-            or "https://telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com"
+            or "https://telcl-prd-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com"
         )
         resp = requests.get(target, timeout=10)
         results["hostname_test"] = {"success": True, "status": resp.status_code}
@@ -677,7 +677,7 @@ def test_connection():
         resp = requests.get(
             "https://52.23.1.211",
             headers={
-                "Host": "telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com"
+                "Host": "telcl-prd-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com"
             },
             timeout=10,
             verify=False,
@@ -698,7 +698,7 @@ def test_connection():
 
 @app.route("/debug-connectivity")
 def debug_connectivity():
-    hostname = "telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com"
+    hostname = "telcl-prd-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com"
     results = {}
 
     # Test DNS
