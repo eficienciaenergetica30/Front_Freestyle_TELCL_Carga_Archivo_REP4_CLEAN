@@ -9,6 +9,8 @@ applications:
       FLASK_ENV: production
       ENVIRONMENT: dev
       PYTHONUNBUFFERED: "true"
+      # Usar el DNS del sistema; debe estar definido antes de arrancar Eventlet.
+      EVENTLET_NO_GREENDNS: "yes"
       HTTP_TIMEOUT: "90"
 
 
