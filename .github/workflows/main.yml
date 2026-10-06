@@ -44,13 +44,17 @@ jobs:
 
       - name: Replace DEV → PRD in app.py
         run: |
-          # Contar ocurrencias ANTES de reemplazar, para validar que sí hay algo que cambiar
+          # Cero referencias DEV es válido si el archivo ya está en PRD.
           BEFORE=$(grep -c "telcl-dev-db-cap" app.py || true)
           echo "Ocurrencias de 'telcl-dev-db-cap' encontradas en app.py: $BEFORE"
 
           if [ "$BEFORE" -eq 0 ]; then
-            echo "::error::No se encontró 'telcl-dev-db-cap' en app.py. Revisa el archivo, puede que ya esté en PRD o que el patrón haya cambiado."
-            exit 1
+            if grep -q "telcl-prd-db-cap" app.py; then
+              echo "app.py ya contiene URLs PRD; no requiere reemplazos."
+            else
+              echo "::error::No se encontró el patrón DEV ni PRD esperado en app.py."
+              exit 1
+            fi
           fi
 
           sed -i 's/telcl-dev-db-cap/telcl-prd-db-cap/g' app.py
@@ -75,8 +79,7 @@ jobs:
           echo "Ocurrencias encontradas en $MF -> nombre app: $BEFORE_APP, ENVIRONMENT: $BEFORE_ENV, URLs: $BEFORE_URL"
 
           if [ "$BEFORE_APP" -eq 0 ] && [ "$BEFORE_ENV" -eq 0 ] && [ "$BEFORE_URL" -eq 0 ]; then
-            echo "::error::No se encontró ningún patrón DEV esperado en $MF. Revisa el archivo."
-            exit 1
+            echo "$MF no contiene patrones DEV; se verificará la configuración PRD."
           fi
 
           sed -i 's/carga-archivo-REP4-clean-DEV/carga-archivo-REP4-clean-PRD/g' "$MF"
@@ -84,9 +87,14 @@ jobs:
           sed -i 's/telcl-dev-db-cap/telcl-prd-db-cap/g' "$MF"
 
           # Validar que no haya quedado nada en dev
-          AFTER=$(grep -c "telcl-dev-db-cap\|carga-archivo-REP4-clean-DEV" "$MF" || true)
+          AFTER=$(grep -Ec "telcl-dev-db-cap|carga-archivo-REP4-clean-DEV|ENVIRONMENT:[[:space:]]*dev" "$MF" || true)
           if [ "$AFTER" -ne 0 ]; then
             echo "::error::Quedaron $AFTER referencias DEV en $MF después del reemplazo"
+            exit 1
+          fi
+
+          if ! grep -q "carga-archivo-REP4-clean-PRD" "$MF" || ! grep -Eq "ENVIRONMENT:[[:space:]]*prd" "$MF"; then
+            echo "::error::No se encontró el nombre de app PRD o ENVIRONMENT: prd en $MF."
             exit 1
           fi
 
@@ -102,10 +110,10 @@ jobs:
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          git add .
+          git add -- app.py "${{ steps.mf.outputs.file }}"
 
           if git diff --staged --quiet; then
-            echo "::warning::No hay cambios para commitear. ¿Ya estaba todo en PRD?"
+            echo "Sin cambios: la configuración ya está en PRD."
             exit 0
           fi
 
