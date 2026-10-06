@@ -100,6 +100,33 @@ jobs:
 
           echo "✅ $MF actualizado correctamente"
 
+      - name: Replace process hub DEV → PRD
+        run: |
+          DEV_BASE='https://tlcl-processes-hub.cfapps.us10.hana.ondemand.com/'
+          PRD_BASE='https://tlcl-processes-hub-prd.cfapps.us10.hana.ondemand.com/'
+          MF="${{ steps.mf.outputs.file }}"
+
+          if ! grep -Fq "$DEV_BASE" app.py && ! grep -Fq "$PRD_BASE" app.py; then
+            echo "::error::No se encontró la URL esperada del hub de procesos en app.py."
+            exit 1
+          fi
+
+          # Conservar la ruta del endpoint y actualizar también overrides del manifest.
+          for FILE in app.py "$MF"; do
+            BEFORE=$(grep -Fc "$DEV_BASE" "$FILE" || true)
+            sed -i 's|https://tlcl-processes-hub\.cfapps\.us10\.hana\.ondemand\.com/|https://tlcl-processes-hub-prd.cfapps.us10.hana.ondemand.com/|g' "$FILE"
+            if grep -Fq "$DEV_BASE" "$FILE"; then
+              echo "::error::Quedaron URLs del hub DEV en $FILE."
+              exit 1
+            fi
+            echo "$FILE: $BEFORE referencia(s) del hub DEV reemplazada(s)."
+          done
+
+          if ! grep -Fq "$PRD_BASE" app.py; then
+            echo "::error::No se encontró la URL del hub PRD en app.py."
+            exit 1
+          fi
+
       - name: Show diff for review
         run: |
           echo "----- DIFF -----"
