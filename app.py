@@ -32,7 +32,7 @@ def configure_dns_for_sap_btp():
             try:
                 return original_getaddrinfo(host, port, family, type, proto, flags)
             except socket.gaierror as e:
-                if host == "telcl-dev-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com":
+                if host == "telcl-prd-db-cap-telcl-srv.cfapps.us10.hana.ondemand.com":
                     print(f"DNS resolution failed for {host}, trying IP fallback...", flush=True)
                     return [
                         (

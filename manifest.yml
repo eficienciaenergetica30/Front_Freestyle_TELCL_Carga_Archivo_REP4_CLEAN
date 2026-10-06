@@ -7,7 +7,7 @@ applications:
     health-check-http-endpoint: /health
     env:
       FLASK_ENV: production
-      ENVIRONMENT: dev
+      ENVIRONMENT: prd
       PYTHONUNBUFFERED: "true"
       # Usar el DNS del sistema; debe estar definido antes de arrancar Eventlet.
       EVENTLET_NO_GREENDNS: "yes"
